@@ -1,8 +1,8 @@
 name: Ping Auto Recharge Cron
 on:
   schedule:
-    - cron: '*/5 * * * *'   # every 15 min (GitHub's free minimum interval)
-  workflow_dispatch:          # lets you trigger it manually too
+    - cron: '*/5 * * * *'   # GitHub's free minimum interval — can't go lower than this
+  workflow_dispatch:              # lets you trigger it manually too
 
 jobs:
   visit:
@@ -13,4 +13,14 @@ jobs:
         with:
           node-version: 20
       - run: npm install playwright && npx playwright install --with-deps chromium
-      - run: node ping.js
+
+      # GitHub won't schedule more often than every 5 minutes, so this loop
+      # fires ping.js 3 times inside each 5-min run (at 0:00, 2:00, 4:00) —
+      # giving an effective ~2-minute cadence without needing cron-job.org.
+      - name: Ping every 2 minutes within this run
+        run: |
+          for i in 1 2 3; do
+            echo "=== Ping $i of 3 ==="
+            node ping.js
+            if [ $i -lt 3 ]; then sleep 120; fi
+          done
