@@ -2,7 +2,7 @@ name: Ping Auto Recharge Cron
 
 on:
   schedule:
-    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
+    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'   # kept as a backup, in case cron-job.org itself ever goes down
   workflow_dispatch:
 
 jobs:
@@ -32,10 +32,5 @@ jobs:
       - name: Install system dependencies (always needed — fresh VM every run)
         run: npx playwright install-deps chromium
 
-      - name: Ping every 2 minutes across a 10-minute window
-        run: |
-          for i in 1 2 3 4 5; do
-            echo "=== Ping $i of 5 ==="
-            node ping.js
-            if [ $i -lt 5 ]; then sleep 120; fi
-          done
+      - name: Ping once
+        run: node ping.js
