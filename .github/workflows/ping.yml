@@ -2,7 +2,7 @@ name: Ping Auto Recharge Cron
 
 on:
   schedule:
-    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'   # every 5 min, offset by 3 to dodge peak-load queueing at :00/:15/:30
+    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Cache Playwright browser binaries
+      - name: Cache Playwright browser binary
         uses: actions/cache@v4
         id: playwright-cache
         with:
@@ -25,9 +25,12 @@ jobs:
       - name: Install dependencies
         run: npm install playwright
 
-      - name: Install Chromium (only if not cached)
+      - name: Install Chromium browser (only if not cached)
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
+
+      - name: Install system dependencies (always needed — fresh VM every run)
+        run: npx playwright install-deps chromium
 
       - name: Ping every 2 minutes across a 10-minute window
         run: |
