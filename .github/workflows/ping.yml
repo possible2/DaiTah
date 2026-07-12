@@ -9,12 +9,30 @@ jobs:
   visit:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache Playwright browser binaries
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
+
+      - name: Install dependencies
+        run: npm install playwright
+
+      - name: Install Chromium (only if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Ping every 2 minutes across a 10-minute window
         run: |
           for i in 1 2 3 4 5; do
             echo "=== Ping $i of 5 ==="
-            curl -s -o /dev/null -w "Status: %{http_code}\n" \
-              --max-time 30 \
-              "https://www.daitah.win/auto_recharge_cron.php"
+            node ping.js
             if [ $i -lt 5 ]; then sleep 120; fi
           done
