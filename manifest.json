@@ -2,6 +2,7 @@
   "name": "Daitah",
   "short_name": "Daitah",
   "description": "Buy data and airtime instantly",
+  "id": "https://daitah.win/",
   "start_url": "https://daitah.win/daitahvtu.php",
   "scope": "https://daitah.win/",
   "display": "standalone",
