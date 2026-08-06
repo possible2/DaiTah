@@ -5,9 +5,14 @@ on:
     - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'   # kept as a backup, in case cron-job.org itself ever goes down
   workflow_dispatch:
 
+concurrency:
+  group: ping-auto-recharge-cron
+  cancel-in-progress: true   # if a new trigger comes in while one is queued/running, drop the stale one instead of stacking
+
 jobs:
   visit:
     runs-on: ubuntu-latest
+    timeout-minutes: 5   # safety net so a hung run can't block the next trigger indefinitely
     steps:
       - uses: actions/checkout@v4
 
