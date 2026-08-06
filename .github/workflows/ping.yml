@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: ping-auto-recharge-cron
-  cancel-in-progress: true   # if a new trigger comes in while one is queued/running, drop the stale one instead of stacking
+  cancel-in-progress: false   # let the current run finish instead of killing it mid-ping
 
 jobs:
   visit:
