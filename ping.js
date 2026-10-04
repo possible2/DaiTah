@@ -16,7 +16,7 @@ const TARGETS = [
   // in-app alerts + push notifications, even when no seller has a page open.
   // src=cron tells dz_push.php "this is the background check" (it shows green in
   // Notifications -> Check my notifications). expect makes a blocked/blank answer visible.
-  { name: 'Dezloh notification sweep', url: 'https://dezloh.com/dz_push.php?action=sweep&src=cron', expect: '"ok":true' },
+  { name: 'Dezloh notification sweep', url: 'https://dezloh.com/dz_push.php?action=sweep&src=cron', expect: '"ok":true', bodyChars: 700 },
 ];
 
 (async () => {
@@ -35,7 +35,7 @@ const TARGETS = [
       });
       const html = await page.content();
       console.log(`[${target.name}] Status:`, res ? res.status() : 'no response');
-      console.log(`[${target.name}] Body:`, html.slice(0, 300));
+      console.log(`[${target.name}] Body:`, html.slice(0, target.bodyChars || 300));
 
       if (target.expect) {
         if (html.includes(target.expect)) {
