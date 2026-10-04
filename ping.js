@@ -9,9 +9,10 @@ const TARGETS = [
   { name: 'Daitah data/airtime cron', url: 'https://www.daitah.win/auto_recharge_cron.php' },
   // Daitah — electricity auto-recharge (new)
   { name: 'Daitah electricity cron',  url: 'https://www.daitah.win/auto_electricity_cron.php' },
-  // Dezloh — keep-alive ping of the site itself. If Dezloh has its own cron
-  // file, change this URL to that file (e.g. https://dezloh.com/your_cron.php).
-  { name: 'Dezloh',                   url: 'https://dezloh.com/cron.php' },
+  // Dezloh — runs the notification sweep: turns new paid orders / bank transfers into
+  // in-app alerts + push notifications, even when no seller has a page open.
+  // (Replaces the old https://dezloh.com/cron.php, which did not exist.)
+  { name: 'Dezloh notification sweep', url: 'https://dezloh.com/dz_push.php?action=sweep' },
 ];
 
 (async () => {
