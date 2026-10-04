@@ -2,17 +2,24 @@ name: Ping Auto Recharge Cron
 
 on:
   schedule:
-    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'   # kept as a backup, in case cron-job.org itself ever goes down
-  workflow_dispatch:
+    # BACKUP ONLY. The run now renews itself (last step below). This only restarts
+    # the chain if it ever breaks. Extra triggers while a run is active just wait
+    # in line and are replaced by each other, so they never pile up.
+    - cron: '4,14,24,34,44,54 * * * *'
+  workflow_dispatch:   # "Run workflow" button, cron-job.org and the self-renewal step all use this
+
+permissions:
+  contents: read
+  actions: write       # lets the run start its own successor
 
 concurrency:
   group: ping-auto-recharge-cron
-  cancel-in-progress: false   # let the current run finish instead of killing it mid-ping
+  cancel-in-progress: false   # never kill a run mid-ping; at most ONE run waits behind it
 
 jobs:
   visit:
     runs-on: ubuntu-latest
-    timeout-minutes: 5   # safety net so a hung run can't block the next trigger indefinitely
+    timeout-minutes: 30        # the ping loop stops itself after 20 minutes
     steps:
       - uses: actions/checkout@v4
 
@@ -41,5 +48,32 @@ jobs:
       - name: Install system dependencies (always needed — fresh VM every run)
         run: npx playwright install-deps chromium
 
-      - name: Ping once
+      - name: Note the start time
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Ping loop (visits every site repeatedly for 20 minutes)
+        id: loop
+        env:
+          LOOP_SECONDS: '1200'
         run: node ping.js
+
+      - name: Start the next run (this keeps the chain going by itself)
+        # Skipped if you cancel the run by hand, or if setup failed before pinging started.
+        if: ${{ !cancelled() && steps.loop.outcome != 'skipped' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # If the run ended within 5 minutes something is badly wrong; do not spin in a fast loop.
+          # The backup schedule will try again.
+          if [ $(( $(date +%s) - STARTED )) -lt 300 ]; then
+            echo "Run ended too early, not renewing. The backup schedule will restart it."
+            exit 0
+          fi
+          for i in 1 2 3; do
+            if gh workflow run ping.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"; then
+              echo "Next run requested."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Could not request the next run. The backup schedule will restart it."
