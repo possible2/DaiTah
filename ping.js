@@ -27,6 +27,10 @@ const TARGETS = [
   // BEFORE it replies. Visited every 30 s so a payment is never kept waiting.
   { name: 'Dezloh notification sweep', url: 'https://dezloh.com/dz_push.php?action=sweep&src=cron', expect: '"ok":true', every: 30 },
 
+  // Daitah: notification sweep. Pushes any alert that never left the server (deposits, orders, ...)
+  // to users' phones even when they have Daitah closed. Every 30 s, like Dezloh's.
+  { name: 'Daitah notification sweep', url: 'https://www.daitah.win/push.php?action=sweep&src=cron', expect: '"ok":true', every: 30 },
+
   // Daitah: data & airtime auto-recharge
   { name: 'Daitah data/airtime cron', url: 'https://www.daitah.win/auto_recharge_cron.php', every: 60 },
 
