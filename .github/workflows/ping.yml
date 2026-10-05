@@ -12,14 +12,19 @@ permissions:
   contents: read
   actions: write       # lets the run start its own successor
 
-concurrency:
-  group: ping-auto-recharge-cron
-  cancel-in-progress: false   # never kill a run mid-ping; at most ONE run waits behind it
+# NO-GAP CHANGE: the old "concurrency" block is gone on purpose. With it, the next run could not even
+# START until the previous one had finished, so every 20 minutes there was a gap (queue wait + about
+# 40 s of setup, sometimes much more). Now the next run is started at minute 15, does its setup while
+# this one is still pinging, then waits (step "Wait for the previous run") and begins pinging the
+# moment the previous run ends. Only ONE run ever pings at a time, so nothing is visited twice.
+# What the concurrency block used to guarantee is now done by that wait step:
+#   - never kill a run mid-ping (nothing cancels any more),
+#   - at most ONE run waiting (an older waiting run steps aside when a newer one exists).
 
 jobs:
   visit:
     runs-on: ubuntu-latest
-    timeout-minutes: 30        # the ping loop stops itself after 20 minutes
+    timeout-minutes: 35        # a run may wait up to ~8 min for the previous one, then pings for 20 minutes
     steps:
       - uses: actions/checkout@v4
 
@@ -48,21 +53,89 @@ jobs:
       - name: Install system dependencies (always needed — fresh VM every run)
         run: npx playwright install-deps chromium
 
+      - name: Wait for the previous run to finish pinging (this is what removes the gap)
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ME="${{ github.run_id }}"
+          REPO="${{ github.repository }}"
+          # How many runs of this workflow that are not finished yet are newer / older than this one.
+          count() { gh run list --repo "$REPO" --workflow ping.yml --limit 30 --json databaseId,status --jq "[.[] | select(.status != \"completed\" and .databaseId $1 $ME)] | length" 2>/dev/null || echo 0; }
+          DEADLINE=$(( $(date +%s) + 480 ))
+          while true; do
+            NEWER=$(count '>');  NEWER=${NEWER:-0}
+            OLDER=$(count '<');  OLDER=${OLDER:-0}
+            if [ "$NEWER" -gt 0 ]; then
+              echo "A newer run already exists and will take over, this one steps aside."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$OLDER" -eq 0 ]; then
+              echo "No earlier run is pinging, starting now."
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              # An earlier run still 'active' after 8 minutes is stuck, not pinging. Carry on rather than break the chain.
+              echo "Earlier run still shown as active after 8 minutes, starting anyway."
+              exit 0
+            fi
+            sleep 3
+          done
+
       - name: Note the start time
+        if: steps.gate.outputs.skip != 'true'
         run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Ping loop (visits every site repeatedly for 20 minutes)
         id: loop
+        if: steps.gate.outputs.skip != 'true'
         env:
           LOOP_SECONDS: '1200'
-        run: node ping.js
+          SPAWN_AFTER_SECONDS: '900'      # the next run is requested at minute 15, so it is ready when this one ends
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Helper in the background: at minute 15 request the next run (unless a newer run already exists).
+          # It leaves /tmp/successor_handled so the last step knows the renewal is already done.
+          (
+            sleep "$SPAWN_AFTER_SECONDS"
+            ME="${{ github.run_id }}"
+            REPO="${{ github.repository }}"
+            NEWER=$(gh run list --repo "$REPO" --workflow ping.yml --limit 30 --json databaseId,status --jq "[.[] | select(.status != \"completed\" and .databaseId > $ME)] | length" 2>/dev/null || echo 0)
+            if [ "${NEWER:-0}" -gt 0 ]; then
+              echo "A newer run already exists, not requesting another."
+              touch /tmp/successor_handled
+              exit 0
+            fi
+            for i in 1 2 3; do
+              if gh workflow run ping.yml --repo "$REPO" --ref "${{ github.ref_name }}"; then
+                echo "Next run requested early (minute 15): it sets up now and takes over when this run ends."
+                touch /tmp/successor_handled
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "Could not request the next run early. The last step will try again when the loop ends."
+          ) &
+          HELPER=$!
+          set +e
+          node ping.js
+          CODE=$?
+          pkill -P "$HELPER" 2>/dev/null
+          kill "$HELPER" 2>/dev/null
+          exit $CODE
 
       - name: Start the next run (this keeps the chain going by itself)
         # Skipped if you cancel the run by hand, or if setup failed before pinging started.
-        if: ${{ !cancelled() && steps.loop.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.gate.outputs.skip != 'true' && steps.loop.outcome != 'skipped' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Normally the next run was already requested at minute 15 (see the ping loop step). Nothing more to do.
+          if [ -f /tmp/successor_handled ]; then
+            echo "Next run was already requested earlier."
+            exit 0
+          fi
           # If the run ended within 5 minutes something is badly wrong; do not spin in a fast loop.
           # The backup schedule will try again.
           if [ $(( $(date +%s) - STARTED )) -lt 300 ]; then
